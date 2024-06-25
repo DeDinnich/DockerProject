@@ -1,0 +1,49 @@
+version: '3.7'
+
+services:
+  frontend:
+    image: dedinnich/frontend-image:latest
+    ports:
+      - "8080:80"
+    volumes:
+      - frontend-data:/usr/share/nginx/html
+
+  backend:
+    image: dedinnich/backend-image:latest
+    ports:
+      - "8081:80"
+    volumes:
+      - backend-data:/var/www
+    environment:
+      APP_ENV: production
+      APP_DEBUG: "false"
+      DB_HOST: mariadb
+      DB_PORT: 3306
+      DB_DATABASE: defaultdb
+      DB_USERNAME: lucas.dinnichert.pro@gmail.com
+      DB_PASSWORD: Velizy78@
+
+  admin:
+    image: dedinnich/frontend-image:latest
+    ports:
+      - "8082:80"
+    volumes:
+      - admin-data:/usr/share/nginx/html
+
+  mariadb:
+    image: dedinnich/mariadb-image:latest
+    environment:
+      - MYSQL_ROOT_PASSWORD=Velizy78@
+      - MYSQL_DATABASE=defaultdb
+      - MYSQL_USER=lucas.dinnichert.pro@gmail.com
+      - MYSQL_PASSWORD=Velizy78@
+    ports:
+      - "3306:3306"
+    volumes:
+      - mariadb-data:/var/lib/mysql
+
+volumes:
+  frontend-data:
+  backend-data:
+  admin-data:
+  mariadb-data:

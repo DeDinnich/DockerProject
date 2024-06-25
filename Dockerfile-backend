@@ -1,0 +1,28 @@
+FROM php:8.2-fpm
+
+# Installer les dépendances système
+RUN apt-get update && apt-get install -y     nano     git     openssh-client     mailutils     curl     zip     unzip     libpng-dev     libjpeg62-turbo-dev     libfreetype6-dev     libonig-dev     libxml2-dev     nginx
+
+# Installer les extensions PHP nécessaires
+RUN docker-php-ext-install pdo_mysql mbstring exif pcntl bcmath gd xml
+
+# Installer Composer
+COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
+
+# Copier la clé SSH
+COPY ./id_rsa /root/.ssh/id_rsa
+COPY ./id_rsa.pub /root/.ssh/id_rsa.pub
+RUN chmod 600 /root/.ssh/id_rsa && chmod 600 /root/.ssh/id_rsa.pub &&     ssh-keyscan github.com >> /root/.ssh/known_hosts
+
+# Copier la configuration Nginx
+COPY default /etc/nginx/sites-available/default
+RUN [ ! -e /etc/nginx/sites-enabled/default ] && ln -s /etc/nginx/sites-available/default /etc/nginx/sites-enabled/default || true
+
+# Définir le répertoire de travail
+WORKDIR /var/www
+
+# Exposer le port
+EXPOSE 80
+
+# Démarrer les services Nginx et PHP-FPM
+CMD service nginx start && php-fpm
