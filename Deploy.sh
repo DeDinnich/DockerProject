@@ -1,5 +1,22 @@
 #!/bin/bash
 
+# Vérifie si le fichier .env existe, sinon le crée avec des valeurs par défaut
+if [ ! -f .env ]; then
+  echo "Fichier .env non trouvé. Création en cours..."
+  cat <<EOF > .env
+NETWORK_NAME=custom_network
+DB_USER=root
+DB_PASSWORD=root
+DB_ROOT_PASSWORD=root
+DOCKER_HUB_USERNAME=root
+DOCKER_HUB_PASSWORD=root
+EOF
+  echo "Fichier .env créé avec les valeurs par défaut."
+fi
+
+# Charger les variables d'environnement
+export $(cat .env | xargs)
+
 # Vérifie si Docker est installé
 if ! [ -x "$(command -v docker)" ]; then
   echo "Docker n'est pas installé. Installation en cours..."
@@ -25,12 +42,15 @@ fi
 docker swarm init || echo "Docker Swarm est déjà initialisé."
 
 # Vérifie si connecté à Docker Hub
-if ! docker info | grep -q "Username: dedinnich"; then
+if ! docker info | grep -q "Username: $DOCKER_HUB_USERNAME"; then
   echo "Connexion à Docker Hub en cours..."
-  echo "$OuiJaiPenseAChangerLeMdp" | docker login -u dedinnich --password-stdin
+  echo "$DOCKER_HUB_PASSWORD" | docker login -u "$DOCKER_HUB_USERNAME" --password-stdin
 else
   echo "Déjà connecté à Docker Hub."
 fi
+
+# Crée le réseau personnalisé
+docker network create --driver overlay $NETWORK_NAME
 
 # Crée le Dockerfile pour le FrontEnd
 cat <<EOF > Dockerfile-frontend
@@ -121,10 +141,10 @@ EOF
 cat <<EOF > Dockerfile-mariadb
 FROM mariadb:latest
 
-ENV MYSQL_ROOT_PASSWORD=Velizy78@
+ENV MYSQL_ROOT_PASSWORD=\${DB_ROOT_PASSWORD}
 ENV MYSQL_DATABASE=defaultdb
-ENV MYSQL_USER=lucas.dinnichert.pro@gmail.com
-ENV MYSQL_PASSWORD=Velizy78@
+ENV MYSQL_USER=\${DB_USER}
+ENV MYSQL_PASSWORD=\${DB_PASSWORD}
 
 RUN apt-get update && apt-get install -y openssh-client
 
@@ -145,13 +165,13 @@ docker build -t backend-image -f Dockerfile-backend .
 docker build -t mariadb-image -f Dockerfile-mariadb .
 
 # Pousser les images Docker sur Docker Hub
-docker tag frontend-image dedinnich/frontend-image:latest
-docker tag backend-image dedinnich/backend-image:latest
-docker tag mariadb-image dedinnich/mariadb-image:latest
+docker tag frontend-image $DOCKER_HUB_USERNAME/frontend-image:latest
+docker tag backend-image $DOCKER_HUB_USERNAME/backend-image:latest
+docker tag mariadb-image $DOCKER_HUB_USERNAME/mariadb-image:latest
 
-docker push dedinnich/frontend-image:latest
-docker push dedinnich/backend-image:latest
-docker push dedinnich/mariadb-image:latest
+docker push $DOCKER_HUB_USERNAME/frontend-image:latest
+docker push $DOCKER_HUB_USERNAME/backend-image:latest
+docker push $DOCKER_HUB_USERNAME/mariadb-image:latest
 
 # Crée un fichier docker-compose.yml
 cat <<EOF > docker-compose.yml
@@ -159,14 +179,16 @@ version: '3.7'
 
 services:
   frontend:
-    image: dedinnich/frontend-image:latest
+    image: $DOCKER_HUB_USERNAME/frontend-image:latest
     ports:
       - "8080:80"
     volumes:
       - frontend-data:/usr/share/nginx/html
+    networks:
+      - \$NETWORK_NAME
 
   backend:
-    image: dedinnich/backend-image:latest
+    image: $DOCKER_HUB_USERNAME/backend-image:latest
     ports:
       - "8081:80"
     volumes:
@@ -177,33 +199,43 @@ services:
       DB_HOST: mariadb
       DB_PORT: 3306
       DB_DATABASE: defaultdb
-      DB_USERNAME: lucas.dinnichert.pro@gmail.com
-      DB_PASSWORD: Velizy78@
+      DB_USERNAME: \$DB_USER
+      DB_PASSWORD: \$DB_PASSWORD
+    networks:
+      - \$NETWORK_NAME
 
   admin:
-    image: dedinnich/frontend-image:latest
+    image: $DOCKER_HUB_USERNAME/frontend-image:latest
     ports:
       - "8082:80"
     volumes:
       - admin-data:/usr/share/nginx/html
+    networks:
+      - \$NETWORK_NAME
 
   mariadb:
-    image: dedinnich/mariadb-image:latest
+    image: $DOCKER_HUB_USERNAME/mariadb-image:latest
     environment:
-      - MYSQL_ROOT_PASSWORD=Velizy78@
+      - MYSQL_ROOT_PASSWORD=\${DB_ROOT_PASSWORD}
       - MYSQL_DATABASE=defaultdb
-      - MYSQL_USER=lucas.dinnichert.pro@gmail.com
-      - MYSQL_PASSWORD=Velizy78@
+      - MYSQL_USER=\${DB_USER}
+      - MYSQL_PASSWORD=\${DB_PASSWORD}
     ports:
       - "3306:3306"
     volumes:
       - mariadb-data:/var/lib/mysql
+    networks:
+      - \$NETWORK_NAME
 
 volumes:
   frontend-data:
   backend-data:
   admin-data:
   mariadb-data:
+
+networks:
+  \$NETWORK_NAME:
+    external: true
 EOF
 
 # Déployer les services avec Docker Swarm
